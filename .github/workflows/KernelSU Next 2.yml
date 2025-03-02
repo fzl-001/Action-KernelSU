@@ -1,4 +1,4 @@
-name: KernelSU Next Two
+name: KernelSU Next Best
 on:
   workflow_dispatch:
     inputs:
