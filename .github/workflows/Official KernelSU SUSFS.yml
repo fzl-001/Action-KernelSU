@@ -1,4 +1,4 @@
-name: KernelSU
+name: KernelSU Next Two
 on:
   workflow_dispatch:
     inputs:
@@ -64,7 +64,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt update && sudo apt upgrade -y
-          sudo apt install -y python3 git curl patch bc bison flex libssl-dev
+          sudo apt install -y python3 git curl patch bc bison flex libssl-dev make
 
       - name: Install repo tool
         run: |
@@ -119,9 +119,10 @@ jobs:
 
       - name: Configure Kernel for KernelSU
         run: |
-          cd kernel_workspace/kernel_platform
-          make defconfig O=out ARCH=arm64 SUBARCH=arm64
-          echo "CONFIG_KSU=y" >> out/.config
+          cd kernel_workspace/kernel_platform/common
+          export PATH=$PWD/../../prebuilts/kernel-build-tools/linux-x86/bin:$PATH
+          make O=../out ARCH=arm64 SUBARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gki_defconfig
+          echo "CONFIG_KSU=y" >> ../out/.config
           echo "已启用 CONFIG_KSU 在 .config 中"
 
       - name: Add KernelSU Hook Definitions
