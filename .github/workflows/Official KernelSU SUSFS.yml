@@ -64,7 +64,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt update && sudo apt upgrade -y
-          sudo apt install -y python3 git curl patch bc bison flex libssl-dev make
+          sudo apt install -y python3 git curl patch bc bison flex libssl-dev
 
       - name: Install repo tool
         run: |
@@ -88,6 +88,12 @@ jobs:
           sed -i 's/CONFIG_LTO=n/CONFIG_LTO=y/' "./common/arch/arm64/configs/gki_defconfig"
           sed -i 's/CONFIG_LTO_CLANG_FULL=y/CONFIG_LTO_CLANG_THIN=y/' "./common/arch/arm64/configs/gki_defconfig"
           sed -i 's/CONFIG_LTO_CLANG_NONE=y/CONFIG_LTO_CLANG_THIN=y/' "./common/arch/arm64/configs/gki_defconfig"
+
+      - name: Configure Kernel for KernelSU
+        run: |
+          cd kernel_workspace/kernel_platform
+          echo "CONFIG_KSU=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "已启用 CONFIG_KSU 在 gki_defconfig 中"
 
       - name: Set up KernelSU
         if: github.event.inputs.KSUNEXT_ENABLED == 'true'
@@ -116,14 +122,6 @@ jobs:
           EOF
           echo "source \"KernelSU/Kconfig\"" >> ../Kconfig
           echo "已添加 KernelSU Kconfig"
-
-      - name: Configure Kernel for KernelSU
-        run: |
-          cd kernel_workspace/kernel_platform/common
-          export PATH=$PWD/../../prebuilts/kernel-build-tools/linux-x86/bin:$PATH
-          make O=../out ARCH=arm64 SUBARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gki_defconfig
-          echo "CONFIG_KSU=y" >> ../out/.config
-          echo "已启用 CONFIG_KSU 在 .config 中"
 
       - name: Add KernelSU Hook Definitions
         if: github.event.inputs.KSUNEXT_ENABLED == 'true'
