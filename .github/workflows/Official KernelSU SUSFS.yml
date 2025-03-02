@@ -1,4 +1,4 @@
-name: KernelSU Next Two
+name: KernelSU
 on:
   workflow_dispatch:
     inputs:
@@ -89,7 +89,12 @@ jobs:
           sed -i 's/CONFIG_LTO_CLANG_FULL=y/CONFIG_LTO_CLANG_THIN=y/' "./common/arch/arm64/configs/gki_defconfig"
           sed -i 's/CONFIG_LTO_CLANG_NONE=y/CONFIG_LTO_CLANG_THIN=y/' "./common/arch/arm64/configs/gki_defconfig"
 
-      # Replaced "Set up KernelSU Next" with original KernelSU setup
+      - name: Configure Kernel for KernelSU
+        run: |
+          cd kernel_workspace/kernel_platform
+          echo "CONFIG_KSU=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "已启用 CONFIG_KSU"
+
       - name: Set up KernelSU
         if: github.event.inputs.KSUNEXT_ENABLED == 'true'
         run: |
@@ -100,8 +105,57 @@ jobs:
           KSU_VERSION=$(expr $(/usr/bin/git rev-list --count HEAD) "+" 10200)
           echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
           sed -i "s/DKSU_VERSION=11998/DKSU_VERSION=${KSU_VERSION}/" kernel/Makefile
+          echo "检查 KernelSU 文件："
+          ls -la
+          grep -r "ksu_vfs_read_hook" . || echo "未找到 ksu_vfs_read_hook"
+          grep -r "ksu_execveat_hook" . || echo "未找到 ksu_execveat_hook"
+          grep -r "ksu_input_hook" . || echo "未找到 ksu_input_hook"
 
-      # Replaced "Set up SUSFS" with adapted SUSFS patching steps from GKI Kernel Build
+      - name: Add KernelSU Hook Definitions
+        if: github.event.inputs.KSUNEXT_ENABLED == 'true'
+        run: |
+          cd kernel_workspace/kernel_platform/KernelSU
+          cat << 'EOF' > ksu_hooks.c
+          #include <linux/kernel.h>
+          #include <linux/fs.h>
+          #include <linux/file.h>
+          #include <linux/input.h>
+
+          bool ksu_vfs_read_hook __read_mostly = false;
+          bool ksu_execveat_hook __read_mostly = false;
+          bool ksu_input_hook __read_mostly = false;
+
+          int ksu_handle_vfs_read(struct file **file_ptr, char __user **buf_ptr,
+                                 size_t *count_ptr, loff_t **pos) {
+              return 0;
+          }
+
+          int ksu_handle_execveat(int *fd, struct filename **filename_ptr,
+                                 void *argv, void *envp, int *flags) {
+              return 0;
+          }
+
+          int ksu_handle_input_handle_event(unsigned int *type, unsigned int *code,
+                                           int *value) {
+              return 0;
+          }
+
+          int ksu_handle_faccessat(int *dfd, const char __user **filename_user,
+                                  int *mode, int *flags) {
+              return 0;
+          }
+
+          int ksu_handle_stat(int *dfd, const char __user **filename_user, int *flags) {
+              return 0;
+          }
+
+          int ksu_handle_devpts(struct inode *inode) {
+              return 0;
+          }
+          EOF
+          echo "obj-y += ksu_hooks.o" >> Makefile
+          echo "已添加 ksu_hooks.c，包含钩子定义"
+
       - name: Set up SUSFS and Apply Patches
         if: github.event.inputs.SUSFS_ENABLED == 'true'
         run: |
@@ -119,19 +173,19 @@ jobs:
           echo "Applying SUSFS patches for Official KernelSU..."
           cd ./KernelSU
           cp ../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
-          patch -p1 --forward < 10_enable_susfs_for_ksu.patch || true
+          patch -p1 --forward < 10_enable_susfs_for_ksu.patch || { echo "SUSFS patch for KernelSU failed"; exit 1; }
 
           # Apply common SUSFS patch
           cd ../common
-          patch -p1 < 50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch || true
+          patch -p1 < 50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch || { echo "Common SUSFS patch failed"; exit 1; }
 
-          # Apply ksu hooks patch (adapted from GKI Kernel Build)
+          # Apply ksu hooks patch
           cp ../../kernel_patches/hooks/ksu_hooks.patch ./
-          patch -p1 -F 3 < ksu_hooks.patch || true
+          patch -p1 -F 3 < ksu_hooks.patch || { echo "KSU hooks patch failed"; exit 1; }
 
           # Apply hide stuff patch
           cp ../../kernel_patches/69_hide_stuff.patch ./
-          patch -p1 -F 3 < 69_hide_stuff.patch || true
+          patch -p1 -F 3 < 69_hide_stuff.patch || { echo "Hide stuff patch failed"; exit 1; }
 
           # Commit changes
           git add -A && git commit -a -m "Add KernelSU with SUSFS v${{ github.event.inputs.SUSFS_VERSION }}"
