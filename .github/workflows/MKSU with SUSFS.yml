@@ -1,4 +1,4 @@
-name: KernelSU with SUSFS Build
+name: MKSU with SUSFS Build
 
 on:
   workflow_dispatch:
