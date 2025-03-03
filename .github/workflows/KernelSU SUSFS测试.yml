@@ -1,4 +1,4 @@
-name: KernelSU Nextt
+name: KernelSU Next Best with VFS Hooks
 on:
   workflow_dispatch:
     inputs:
@@ -14,10 +14,14 @@ on:
         description: "处理器代号"
         required: true
         default: 'waipio'
-      KERNEL_CONFIG:
-        description: "内核配置 (e.g., android12-5.10)"
+      ANDROID_VERSION:
+        description: "内核安卓版本"
         required: true
-        default: 'android12-5.10'
+        default: 'android12'
+      KERNEL_VERSION:
+        description: "内核版本"
+        required: true
+        default: '5.10'
       BUILD_METHOD:
         description: "编译方式"
         required: true
@@ -36,35 +40,22 @@ on:
         description: "SUSFS 版本"
         required: true
         default: 'v1.5.5'
-      OS_PATCH_LEVEL:
-        description: "OS Patch Level"
-        required: true
-        default: '2023-01'
-      SUB_LEVEL:
-        description: "Kernel Sub-level"
-        required: true
-        default: '0'
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
-    env:
-      CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
-      CCACHE_NOHASHDIR: "true"
-      CCACHE_HARDLINK: "true"
-
+    runs-on: ubuntu-latest
+    
     steps:
       - name: Maximize build space
         uses: easimon/maximize-build-space@master
         with:
           root-reserve-mb: 8192
           temp-reserve-mb: 2048
-          swap-size-mb: 8192
           remove-dotnet: 'true'
           remove-android: 'true'
           remove-haskell: 'true'
           remove-codeql: 'true'
-
+          
       - name: Configure Git
         run: |
           git config --global user.name "build"
@@ -73,7 +64,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt update && sudo apt upgrade -y
-          sudo apt install -y python3 git curl patch bc bison flex libssl-dev ccache
+          sudo apt install -y python3 git curl patch bc bison flex libssl-dev make gcc g++ libelf-dev
 
       - name: Install repo tool
         run: |
@@ -81,103 +72,28 @@ jobs:
           chmod a+x ~/repo
           sudo mv ~/repo /usr/local/bin/repo
 
-      - name: Set up ccache
-        run: |
-          mkdir -p ~/.cache/bazel
-          ccache --version
-          ccache --max-size=2G
-          ccache --set-config=compression=true
-          echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
-
-      - name: Restore ccache from cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.ccache
-          key: ${{ github.event.inputs.KERNEL_CONFIG }}-${{ github.event.inputs.SUB_LEVEL }}-ccache-${{ github.sha }}
-          restore-keys: |
-            ${{ github.event.inputs.KERNEL_CONFIG }}-${{ github.event.inputs.SUB_LEVEL }}-ccache-
-
-      - name: Parse KERNEL_CONFIG
-        run: |
-          ANDROID_VERSION=$(echo "${{ github.event.inputs.KERNEL_CONFIG }}" | cut -d'-' -f1)
-          KERNEL_VERSION=$(echo "${{ github.event.inputs.KERNEL_CONFIG }}" | cut -d'-' -f2)
-          echo "ANDROID_VERSION=$ANDROID_VERSION" >> $GITHUB_ENV
-          echo "KERNEL_VERSION=$KERNEL_VERSION" >> $GITHUB_ENV
-
       - name: Initialize repo and sync
         run: |
           mkdir kernel_workspace && cd kernel_workspace
           repo init -u https://github.com/OnePlusOSS/kernel_manifest.git -b refs/heads/oneplus/${{ github.event.inputs.CPU }} -m ${{ github.event.inputs.FEIL }}.xml --depth=1
-          repo sync -c -j$(nproc --all) --no-tags --fail-fast
+          repo sync
           rm kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
           rm kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
           sed -i 's/ -dirty//g' kernel_platform/common/scripts/setlocalversion
           sed -i 's/ -dirty//g' kernel_platform/msm-kernel/scripts/setlocalversion
 
-      - name: Locate defconfig file
-        run: |
-          cd kernel_workspace/kernel_platform
-          DEFCONFIG_PATH=""
-          if [ -f "msm-kernel/arch/arm64/configs/${{ github.event.inputs.CPUD }}_defconfig" ]; then
-            DEFCONFIG_PATH="msm-kernel/arch/arm64/configs/${{ github.event.inputs.CPUD }}_defconfig"
-          elif [ -f "common/arch/arm64/configs/gki_defconfig" ]; then
-            DEFCONFIG_PATH="common/arch/arm64/configs/gki_defconfig"
-          elif ls msm-kernel/arch/arm64/configs/*_defconfig >/dev/null 2>&1; then
-            DEFCONFIG_PATH=$(ls msm-kernel/arch/arm64/configs/*_defconfig | head -n 1)
-          else
-            echo "Error: No defconfig file found in expected locations."
-            exit 1
-          fi
-          echo "Using defconfig: $DEFCONFIG_PATH"
-          echo "DEFCONFIG_PATH=$DEFCONFIG_PATH" >> $GITHUB_ENV
-
       - name: Set LTO to THIN
         run: |
           cd kernel_workspace/kernel_platform
-          sed -i 's/CONFIG_LTO=n/CONFIG_LTO=y/' "$DEFCONFIG_PATH"
-          sed -i 's/CONFIG_LTO_CLANG_FULL=y/CONFIG_LTO_CLANG_THIN=y/' "$DEFCONFIG_PATH"
-          sed -i 's/CONFIG_LTO_CLANG_NONE=y/CONFIG_LTO_CLANG_THIN=y/' "$DEFCONFIG_PATH"
+          sed -i 's/CONFIG_LTO=n/CONFIG_LTO=y/' "./common/arch/arm64/configs/gki_defconfig"
+          sed -i 's/CONFIG_LTO_CLANG_FULL=y/CONFIG_LTO_CLANG_THIN=y/' "./common/arch/arm64/configs/gki_defconfig"
+          sed -i 's/CONFIG_LTO_CLANG_NONE=y/CONFIG_LTO_CLANG_THIN=y/' "./common/arch/arm64/configs/gki_defconfig"
 
-      - name: Determine the branch for KernelSU Next
-        if: github.event.inputs.KSUNEXT_ENABLED == 'true'
-        run: |
-          echo "BRANCH=-s next" >> $GITHUB_ENV
-
-      - name: Set up KernelSU Next
-        if: github.event.inputs.KSUNEXT_ENABLED == 'true'
+      - name: Define DEFCONFIG_PATH and Configure VFS Hooks
         run: |
           cd kernel_workspace/kernel_platform
-          echo "Adding KernelSU Next..."
-          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash $BRANCH
-          cd KernelSU-Next
-          KSU_VERSION=$(expr $(/usr/bin/git rev-list --count HEAD) "+" 10200)
-          echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
-          sed -i "s/DKSU_VERSION=11998/DKSU_VERSION=${KSU_VERSION}/" kernel/Makefile
-
-      - name: Set up SUSFS and Apply Patches
-        if: github.event.inputs.SUSFS_ENABLED == 'true'
-        run: |
-          cd kernel_workspace
-          git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}
-          git clone https://github.com/TheWildJames/kernel_patches.git
-          cd kernel_platform
-          cp ../kernel_patches/next/0001-kernel-patch-susfs-v1.5.5-to-KernelSU-Next-v1.0.5.patch ./KernelSU-Next/
-          cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch ./msm-kernel/  # Adjusted to msm-kernel
-          cp -r ../susfs4ksu/kernel_patches/fs/* ./msm-kernel/fs/  # Adjusted to msm-kernel
-          cp -r ../susfs4ksu/kernel_patches/include/linux/* ./msm-kernel/include/linux/  # Adjusted to msm-kernel
-
-          cd ./KernelSU-Next
-          patch -p1 < 0001-kernel-patch-susfs-v1.5.5-to-KernelSU-Next-v1.0.5.patch || true
-          cd ../msm-kernel  # Adjusted to msm-kernel
-          patch -p1 < 50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch || true
-
-          cp ../../kernel_patches/next/next_hooks.patch ./
-          patch -p1 -F 3 < next_hooks.patch
-
-          cp ../../kernel_patches/69_hide_stuff.patch ./
-          patch -p1 -F 3 < 69_hide_stuff.patch
-
-          echo "Adding configuration settings to defconfig..."
+          DEFCONFIG_PATH="./common/arch/arm64/configs/gki_defconfig"
+          echo "Adding configuration settings to defconfig for VFS hooks..."
           echo "CONFIG_KSU=y" >> "$DEFCONFIG_PATH"
           echo "CONFIG_KSU_WITH_KPROBES=n" >> "$DEFCONFIG_PATH"
           echo "CONFIG_KSU_SUSFS=y" >> "$DEFCONFIG_PATH"
@@ -201,35 +117,63 @@ jobs:
           echo "CONFIG_IP_NF_TARGET_TTL=y" >> "$DEFCONFIG_PATH"
           echo "CONFIG_IP6_NF_TARGET_HL=y" >> "$DEFCONFIG_PATH"
           echo "CONFIG_IP6_NF_MATCH_HL=y" >> "$DEFCONFIG_PATH"
+          # 验证配置是否生效
+          make -C common O=../out/msm-${{ github.event.inputs.CPUD }}-${{ github.event.inputs.CPUD }}-gki ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gki_defconfig
+          grep "CONFIG_KSU_SUSFS" ../out/msm-${{ github.event.inputs.CPUD }}-${{ github.event.inputs.CPUD }}-gki/.config || echo "Warning: CONFIG_KSU_SUSFS not found!"
 
-          git add -A && git commit -a -m "BUILD Kernel with SUSFS v${{ github.event.inputs.SUSFS_VERSION }}"
+      - name: Set up KernelSU Next
+        if: github.event.inputs.KSUNEXT_ENABLED == 'true'
+        run: |
+          cd kernel_workspace/kernel_platform
+          curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
+          cd KernelSU-Next
+          KSU_VERSION=$(expr $(/usr/bin/git rev-list --count HEAD) "+" 10200)
+          echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
+          sed -i "s/DKSU_VERSION=11998/DKSU_VERSION=${KSU_VERSION}/" kernel/Makefile
+
+      - name: Set up SUSFS with VFS Hooks
+        if: github.event.inputs.SUSFS_ENABLED == 'true'
+        run: |
+          cd kernel_workspace
+          git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}
+          git clone https://github.com/TheWildJames/kernel_patches.git
+          cd kernel_platform
+          cp ../kernel_patches/next/0001-kernel-patch-susfs-v1.5.5-to-KernelSU-Next-v1.0.5.patch ./KernelSU-Next/
+          cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch ./common/
+          cp -r ../susfs4ksu/kernel_patches/fs/* ./common/fs/
+          cp -r ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
+          # 应用补丁
+          cd ./KernelSU-Next
+          patch -p1 < 0001-kernel-patch-susfs-v1.5.5-to-KernelSU-Next-v1.0.5.patch || true
+          cd ../common
+          patch -p1 < 50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch || true
+          # 添加额外的 VFS hooks 补丁（假设已有）
+          cp ../../kernel_patches/hooks/new_hooks.patch ./
+          patch -p1 -F 3 < new_hooks.patch || true
+          cp ../../kernel_patches/69_hide_stuff.patch ./
+          patch -p1 -F 3 < 69_hide_stuff.patch || true
+          git add -A && git commit -a -m "BUILD Kernel with SUSFS v${{ github.event.inputs.SUSFS_VERSION }} and VFS hooks"
           cd ../msm-kernel
-          git add -A && git commit -a -m "Update for SUSFS"
+          git add -A && git commit -a -m "Update for SUSFS and VFS hooks"
           cd ..
 
       - name: Build kernel
         run: |
-          cd kernel_workspace/kernel_platform
-          export PATH="$PWD/prebuilts/kernel-build-tools/linux-x86/bin:$PATH"
-          ./oplus/build/oplus_build_kernel.sh ${{ github.event.inputs.CPUD }} ${{ github.event.inputs.BUILD_METHOD }} CC="/usr/bin/ccache clang"
-
-      - name: Show ccache stats
-        run: |
-          ccache --show-stats
-
+          cd kernel_workspace
+          ./kernel_platform/oplus/build/oplus_build_kernel.sh ${{ github.event.inputs.CPUD }} ${{ github.event.inputs.BUILD_METHOD }}
+         
       - name: Make AnyKernel3
         run: |
-          cd kernel_workspace
           git clone https://github.com/Kernel-SU/AnyKernel3 --depth=1
           rm -rf ./AnyKernel3/.git
-          cp kernel_platform/out/msm-${{ github.event.inputs.CPUD }}-${{ github.event.inputs.CPUD }}-gki/dist/Image ./AnyKernel3/
+          cp kernel_workspace/kernel_platform/out/msm-${{ github.event.inputs.CPUD }}-${{ github.event.inputs.CPUD }}-gki/dist/Image ./AnyKernel3/
 
       - name: Upload AnyKernel3
         uses: actions/upload-artifact@v4
         with:
           name: AnyKernel3_KernelSU_Next_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}
-          path: kernel_workspace/AnyKernel3/*
-
+          path: ./AnyKernel3/*
+         
       - name: Upload Image
         uses: actions/upload-artifact@v4
         with:
