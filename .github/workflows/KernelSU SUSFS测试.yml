@@ -1,4 +1,4 @@
-name: KernelSU Next
+name: KernelSU Nextt
 on:
   workflow_dispatch:
     inputs:
@@ -97,29 +97,6 @@ jobs:
           restore-keys: |
             ${{ github.event.inputs.KERNEL_CONFIG }}-${{ github.event.inputs.SUB_LEVEL }}-ccache-
 
-      - name: Cache toolchain
-        id: cache-toolchain
-        uses: actions/cache@v4
-        with:
-          path: |
-            kernel-build-tools
-            mkbootimg
-          key: toolchain-${{ runner.os }}-v1
-
-      - name: Download toolchain (if cache not found)
-        if: steps.cache-toolchain.outputs.cache-hit != 'true'
-        run: |
-          AOSP_MIRROR=https://android.googlesource.com
-          BRANCH=main-kernel-build-2024
-          git clone $AOSP_MIRROR/kernel/prebuilts/build-tools -b $BRANCH --depth 1 kernel-build-tools
-          git clone $AOSP_MIRROR/platform/system/tools/mkbootimg -b $BRANCH --depth 1 mkbootimg
-
-      - name: Set environment variables for toolchain
-        run: |
-          echo "AVBTOOL=$GITHUB_WORKSPACE/kernel-build-tools/linux-x86/bin/avbtool" >> $GITHUB_ENV
-          echo "MKBOOTIMG=$GITHUB_WORKSPACE/mkbootimg/mkbootimg.py" >> $GITHUB_ENV
-          echo "UNPACK_BOOTIMG=$GITHUB_WORKSPACE/mkbootimg/unpack_bootimg.py" >> $GITHUB_ENV
-
       - name: Parse KERNEL_CONFIG
         run: |
           ANDROID_VERSION=$(echo "${{ github.event.inputs.KERNEL_CONFIG }}" | cut -d'-' -f1)
@@ -137,12 +114,29 @@ jobs:
           sed -i 's/ -dirty//g' kernel_platform/common/scripts/setlocalversion
           sed -i 's/ -dirty//g' kernel_platform/msm-kernel/scripts/setlocalversion
 
+      - name: Locate defconfig file
+        run: |
+          cd kernel_workspace/kernel_platform
+          DEFCONFIG_PATH=""
+          if [ -f "msm-kernel/arch/arm64/configs/${{ github.event.inputs.CPUD }}_defconfig" ]; then
+            DEFCONFIG_PATH="msm-kernel/arch/arm64/configs/${{ github.event.inputs.CPUD }}_defconfig"
+          elif [ -f "common/arch/arm64/configs/gki_defconfig" ]; then
+            DEFCONFIG_PATH="common/arch/arm64/configs/gki_defconfig"
+          elif ls msm-kernel/arch/arm64/configs/*_defconfig >/dev/null 2>&1; then
+            DEFCONFIG_PATH=$(ls msm-kernel/arch/arm64/configs/*_defconfig | head -n 1)
+          else
+            echo "Error: No defconfig file found in expected locations."
+            exit 1
+          fi
+          echo "Using defconfig: $DEFCONFIG_PATH"
+          echo "DEFCONFIG_PATH=$DEFCONFIG_PATH" >> $GITHUB_ENV
+
       - name: Set LTO to THIN
         run: |
           cd kernel_workspace/kernel_platform
-          sed -i 's/CONFIG_LTO=n/CONFIG_LTO=y/' "./common/arch/arm64/configs/gki_defconfig"
-          sed -i 's/CONFIG_LTO_CLANG_FULL=y/CONFIG_LTO_CLANG_THIN=y/' "./common/arch/arm64/configs/gki_defconfig"
-          sed -i 's/CONFIG_LTO_CLANG_NONE=y/CONFIG_LTO_CLANG_THIN=y/' "./common/arch/arm64/configs/gki_defconfig"
+          sed -i 's/CONFIG_LTO=n/CONFIG_LTO=y/' "$DEFCONFIG_PATH"
+          sed -i 's/CONFIG_LTO_CLANG_FULL=y/CONFIG_LTO_CLANG_THIN=y/' "$DEFCONFIG_PATH"
+          sed -i 's/CONFIG_LTO_CLANG_NONE=y/CONFIG_LTO_CLANG_THIN=y/' "$DEFCONFIG_PATH"
 
       - name: Determine the branch for KernelSU Next
         if: github.event.inputs.KSUNEXT_ENABLED == 'true'
@@ -168,13 +162,13 @@ jobs:
           git clone https://github.com/TheWildJames/kernel_patches.git
           cd kernel_platform
           cp ../kernel_patches/next/0001-kernel-patch-susfs-v1.5.5-to-KernelSU-Next-v1.0.5.patch ./KernelSU-Next/
-          cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch ./common/
-          cp -r ../susfs4ksu/kernel_patches/fs/* ./common/fs/
-          cp -r ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
+          cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch ./msm-kernel/  # Adjusted to msm-kernel
+          cp -r ../susfs4ksu/kernel_patches/fs/* ./msm-kernel/fs/  # Adjusted to msm-kernel
+          cp -r ../susfs4ksu/kernel_patches/include/linux/* ./msm-kernel/include/linux/  # Adjusted to msm-kernel
 
           cd ./KernelSU-Next
           patch -p1 < 0001-kernel-patch-susfs-v1.5.5-to-KernelSU-Next-v1.0.5.patch || true
-          cd ../common
+          cd ../msm-kernel  # Adjusted to msm-kernel
           patch -p1 < 50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch || true
 
           cp ../../kernel_patches/next/next_hooks.patch ./
@@ -183,30 +177,30 @@ jobs:
           cp ../../kernel_patches/69_hide_stuff.patch ./
           patch -p1 -F 3 < 69_hide_stuff.patch
 
-          echo "Adding configuration settings to gki_defconfig..."
-          echo "CONFIG_KSU=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_WITH_KPROBES=n" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SUS_OVERLAYFS=n" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_TMPFS_XATTR=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_TMPFS_POSIX_ACL=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IP_NF_TARGET_TTL=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IP6_NF_TARGET_HL=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IP6_NF_MATCH_HL=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "Adding configuration settings to defconfig..."
+          echo "CONFIG_KSU=y" >> "$DEFCONFIG_PATH"
+          echo "CONFIG_KSU_WITH_KPROBES=n" >> "$DEFCONFIG_PATH"
+          echo "CONFIG_KSU_SUSFS=y" >> "$DEFCONFIG_PATH"
+          echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> "$DEFCONFIG_PATH"
+          echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> "$DEFCONFIG_PATH"
+          echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> "$DEFCONFIG_PATH"
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> "$DEFCONFIG_PATH"
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >> "$DEFCONFIG_PATH"
+          echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> "$DEFCONFIG_PATH"
+          echo "CONFIG_KSU_SUSFS_SUS_OVERLAYFS=n" >> "$DEFCONFIG_PATH"
+          echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> "$DEFCONFIG_PATH"
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y" >> "$DEFCONFIG_PATH"
+          echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> "$DEFCONFIG_PATH"
+          echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> "$DEFCONFIG_PATH"
+          echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> "$DEFCONFIG_PATH"
+          echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> "$DEFCONFIG_PATH"
+          echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> "$DEFCONFIG_PATH"
+          echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> "$DEFCONFIG_PATH"
+          echo "CONFIG_TMPFS_XATTR=y" >> "$DEFCONFIG_PATH"
+          echo "CONFIG_TMPFS_POSIX_ACL=y" >> "$DEFCONFIG_PATH"
+          echo "CONFIG_IP_NF_TARGET_TTL=y" >> "$DEFCONFIG_PATH"
+          echo "CONFIG_IP6_NF_TARGET_HL=y" >> "$DEFCONFIG_PATH"
+          echo "CONFIG_IP6_NF_MATCH_HL=y" >> "$DEFCONFIG_PATH"
 
           git add -A && git commit -a -m "BUILD Kernel with SUSFS v${{ github.event.inputs.SUSFS_VERSION }}"
           cd ../msm-kernel
@@ -215,8 +209,9 @@ jobs:
 
       - name: Build kernel
         run: |
-          cd kernel_workspace
-          ./kernel_platform/oplus/build/oplus_build_kernel.sh ${{ github.event.inputs.CPUD }} ${{ github.event.inputs.BUILD_METHOD }} CC="/usr/bin/ccache clang"
+          cd kernel_workspace/kernel_platform
+          export PATH="$PWD/prebuilts/kernel-build-tools/linux-x86/bin:$PATH"
+          ./oplus/build/oplus_build_kernel.sh ${{ github.event.inputs.CPUD }} ${{ github.event.inputs.BUILD_METHOD }} CC="/usr/bin/ccache clang"
 
       - name: Show ccache stats
         run: |
@@ -224,15 +219,16 @@ jobs:
 
       - name: Make AnyKernel3
         run: |
+          cd kernel_workspace
           git clone https://github.com/Kernel-SU/AnyKernel3 --depth=1
           rm -rf ./AnyKernel3/.git
-          cp kernel_workspace/kernel_platform/out/msm-${{ github.event.inputs.CPUD }}-${{ github.event.inputs.CPUD }}-gki/dist/Image ./AnyKernel3/
+          cp kernel_platform/out/msm-${{ github.event.inputs.CPUD }}-${{ github.event.inputs.CPUD }}-gki/dist/Image ./AnyKernel3/
 
       - name: Upload AnyKernel3
         uses: actions/upload-artifact@v4
         with:
           name: AnyKernel3_KernelSU_Next_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}
-          path: ./AnyKernel3/*
+          path: kernel_workspace/AnyKernel3/*
 
       - name: Upload Image
         uses: actions/upload-artifact@v4
