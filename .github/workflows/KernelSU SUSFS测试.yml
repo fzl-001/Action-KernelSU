@@ -190,25 +190,25 @@ jobs:
           cd kernel_workspace/kernel_platform
           CONFIG_FILE=./common/arch/arm64/configs/gki_defconfig
           
-          # Add KernelSU and SUSFS config settings with 'defCONFIG' prefix (no space)
-          echo "defCONFIG_KSU=y" >> "$CONFIG_FILE"
-          echo "defCONFIG_KSU_WITH_KPROBES=n" >> "$CONFIG_FILE"
-          echo "defCONFIG_KSU_SUSFS=y" >> "$CONFIG_FILE"
-          echo "defCONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> "$CONFIG_FILE"
-          echo "defCONFIG_KSU_SUSFS_SUS_PATH=y" >> "$CONFIG_FILE"
-          echo "defCONFIG_KSU_SUSFS_SUS_MOUNT=y" >> "$CONFIG_FILE"
-          echo "defCONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> "$CONFIG_FILE"
-          echo "defCONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >> "$CONFIG_FILE"
-          echo "defCONFIG_KSU_SUSFS_SUS_KSTAT=y" >> "$CONFIG_FILE"
-          echo "defCONFIG_KSU_SUSFS_SUS_OVERLAYFS=n" >> "$CONFIG_FILE"
-          echo "defCONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> "$CONFIG_FILE"
-          echo "defCONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y" >> "$CONFIG_FILE"
-          echo "defCONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> "$CONFIG_FILE"
-          echo "defCONFIG_KSU_SUSFS_ENABLE_LOG=y" >> "$CONFIG_FILE"
-          echo "defCONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> "$CONFIG_FILE"
-          echo "defCONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> "$CONFIG_FILE"
-          echo "defCONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> "$CONFIG_FILE"
-          echo "defCONFIG_KSU_SUSFS_SUS_SU=n" >> "$CONFIG_FILE"
+          # Add KernelSU and SUSFS config settings with 'gki_defconfig_' prefix
+          echo "gki_defconfig_KSU=y" >> "$CONFIG_FILE"
+          echo "gki_defconfig_KSU_WITH_KPROBES=n" >> "$CONFIG_FILE"
+          echo "gki_defconfig_KSU_SUSFS=y" >> "$CONFIG_FILE"
+          echo "gki_defconfig_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> "$CONFIG_FILE"
+          echo "gki_defconfig_KSU_SUSFS_SUS_PATH=y" >> "$CONFIG_FILE"
+          echo "gki_defconfig_KSU_SUSFS_SUS_MOUNT=y" >> "$CONFIG_FILE"
+          echo "gki_defconfig_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> "$CONFIG_FILE"
+          echo "gki_defconfig_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >> "$CONFIG_FILE"
+          echo "gki_defconfig_KSU_SUSFS_SUS_KSTAT=y" >> "$CONFIG_FILE"
+          echo "gki_defconfig_KSU_SUSFS_SUS_OVERLAYFS=n" >> "$CONFIG_FILE"
+          echo "gki_defconfig_KSU_SUSFS_TRY_UMOUNT=y" >> "$CONFIG_FILE"
+          echo "gki_defconfig_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y" >> "$CONFIG_FILE"
+          echo "gki_defconfig_KSU_SUSFS_SPOOF_UNAME=y" >> "$CONFIG_FILE"
+          echo "gki_defconfig_KSU_SUSFS_ENABLE_LOG=y" >> "$CONFIG_FILE"
+          echo "gki_defconfig_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> "$CONFIG_FILE"
+          echo "gki_defconfig_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> "$CONFIG_FILE"
+          echo "gki_defconfig_KSU_SUSFS_OPEN_REDIRECT=y" >> "$CONFIG_FILE"
+          echo "gki_defconfig_KSU_SUSFS_SUS_SU=n" >> "$CONFIG_FILE"
 
       - name: Build kernel
         run: |
