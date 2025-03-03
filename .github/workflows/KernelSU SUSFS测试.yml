@@ -1,4 +1,4 @@
-name: KernelSU
+name: KernelSU Next Best
 on:
   workflow_dispatch:
     inputs:
@@ -14,14 +14,10 @@ on:
         description: "处理器代号"
         required: true
         default: 'waipio'
-      ANDROID_VERSION:
-        description: "内核安卓版本"
+      KERNEL_CONFIG:
+        description: "内核配置 (e.g., android12-5.10)"
         required: true
-        default: 'android12'
-      KERNEL_VERSION:
-        description: "内核版本"
-        required: true
-        default: '5.10'
+        default: 'android12-5.10'
       BUILD_METHOD:
         description: "编译方式"
         required: true
@@ -48,14 +44,10 @@ on:
         description: "Kernel Sub-level"
         required: true
         default: '0'
-      REVISION:
-        description: "Revision"
-        required: false
-        default: 'r1'
 
 jobs:
   build:
-    runs-on: ubuntu-22.04  # Updated to match gki-kernel.yaml
+    runs-on: ubuntu-22.04
     env:
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
       CCACHE_NOHASHDIR: "true"
@@ -67,7 +59,7 @@ jobs:
         with:
           root-reserve-mb: 8192
           temp-reserve-mb: 2048
-          swap-size-mb: 8192  # Added from gki-kernel.yaml
+          swap-size-mb: 8192
           remove-dotnet: 'true'
           remove-android: 'true'
           remove-haskell: 'true'
@@ -81,7 +73,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt update && sudo apt upgrade -y
-          sudo apt install -y python3 git curl patch bc bison flex libssl-dev ccache  # Added ccache
+          sudo apt install -y python3 git curl patch bc bison flex libssl-dev ccache
 
       - name: Install repo tool
         run: |
@@ -91,7 +83,7 @@ jobs:
 
       - name: Set up ccache
         run: |
-          mkdir -p ~/.cache/bazel  # Ensure the directory exists
+          mkdir -p ~/.cache/bazel
           ccache --version
           ccache --max-size=2G
           ccache --set-config=compression=true
@@ -101,9 +93,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.ccache
-          key: ${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}-${{ github.event.inputs.SUB_LEVEL }}-ccache-${{ github.sha }}
+          key: ${{ github.event.inputs.KERNEL_CONFIG }}-${{ github.event.inputs.SUB_LEVEL }}-ccache-${{ github.sha }}
           restore-keys: |
-            ${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}-${{ github.event.inputs.SUB_LEVEL }}-ccache-
+            ${{ github.event.inputs.KERNEL_CONFIG }}-${{ github.event.inputs.SUB_LEVEL }}-ccache-
 
       - name: Cache toolchain
         id: cache-toolchain
@@ -140,11 +132,18 @@ jobs:
             exit 1
           fi
 
+      - name: Parse KERNEL_CONFIG
+        run: |
+          ANDROID_VERSION=$(echo "${{ github.event.inputs.KERNEL_CONFIG }}" | cut -d'-' -f1)
+          KERNEL_VERSION=$(echo "${{ github.event.inputs.KERNEL_CONFIG }}" | cut -d'-' -f2)
+          echo "ANDROID_VERSION=$ANDROID_VERSION" >> $GITHUB_ENV
+          echo "KERNEL_VERSION=$KERNEL_VERSION" >> $GITHUB_ENV
+
       - name: Initialize repo and sync
         run: |
           mkdir kernel_workspace && cd kernel_workspace
           repo init -u https://github.com/OnePlusOSS/kernel_manifest.git -b refs/heads/oneplus/${{ github.event.inputs.CPU }} -m ${{ github.event.inputs.FEIL }}.xml --depth=1
-          repo sync -c -j$(nproc --all) --no-tags --fail-fast  # Enhanced sync options from gki-kernel.yaml
+          repo sync -c -j$(nproc --all) --no-tags --fail-fast
           rm kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
           rm kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
           sed -i 's/ -dirty//g' kernel_platform/common/scripts/setlocalversion
@@ -177,18 +176,18 @@ jobs:
         if: github.event.inputs.SUSFS_ENABLED == 'true'
         run: |
           cd kernel_workspace
-          git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}
+          git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}
           git clone https://github.com/TheWildJames/kernel_patches.git
           cd kernel_platform
           cp ../kernel_patches/next/0001-kernel-patch-susfs-v1.5.5-to-KernelSU-Next-v1.0.5.patch ./KernelSU-Next/
-          cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch ./common/
+          cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch ./common/
           cp -r ../susfs4ksu/kernel_patches/fs/* ./common/fs/
           cp -r ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
 
           cd ./KernelSU-Next
           patch -p1 < 0001-kernel-patch-susfs-v1.5.5-to-KernelSU-Next-v1.0.5.patch || true
           cd ../common
-          patch -p1 < 50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch || true
+          patch -p1 < 50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch || true
 
           cp ../../kernel_patches/next/next_hooks.patch ./
           patch -p1 -F 3 < next_hooks.patch
@@ -229,7 +228,7 @@ jobs:
       - name: Build kernel
         run: |
           cd kernel_workspace
-          ./kernel_platform/oplus/build/oplus_build_kernel.sh ${{ github.event.inputs.CPUD }} ${{ github.event.inputs.BUILD_METHOD }} CC="/usr/bin/ccache clang"  # Added ccache clang
+          ./kernel_platform/oplus/build/oplus_build_kernel.sh ${{ github.event.inputs.CPUD }} ${{ github.event.inputs.BUILD_METHOD }} CC="/usr/bin/ccache clang"
 
       - name: Show ccache stats
         run: |
