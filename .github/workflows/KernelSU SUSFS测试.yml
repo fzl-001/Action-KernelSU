@@ -111,7 +111,8 @@ jobs:
         if: github.event.inputs.KSUNEXT_ENABLED == 'true'
         run: |
           cd kernel_workspace/kernel_platform
-          curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
+          echo "Adding KernelSU Next..."
+          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next
           cd KernelSU-Next
           KSU_VERSION=$(expr $(/usr/bin/git rev-list --count HEAD) "+" 10200)
           echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
@@ -134,39 +135,80 @@ jobs:
             fi
           done
 
-          # Modify ksud.c: Add hook variables and exports
-          sed -i '/#include "selinux\/selinux.h"/a bool ksu_vfs_read_hook = true;\nbool ksu_execveat_hook = true;\nbool ksu_input_hook = true;\nEXPORT_SYMBOL(ksu_vfs_read_hook);\nEXPORT_SYMBOL(ksu_execveat_hook);\nEXPORT_SYMBOL(ksu_input_hook);' "$KSUD_C"
+          # Modify ksud.c: Add EXPORT_SYMBOL to existing definitions if not already present
+          for var in ksu_vfs_read_hook ksu_execveat_hook ksu_input_hook; do
+            if ! grep -q "EXPORT_SYMBOL($var)" "$KSUD_C"; then
+              sed -i "/bool $var = true;/a EXPORT_SYMBOL($var);" "$KSUD_C"
+            fi
+          done
 
-          # Modify ksud.h: Add extern declarations
-          sed -i '/#include <linux\/types.h>/a extern bool ksu_vfs_read_hook;\nextern bool ksu_execveat_hook;\nextern bool ksu_input_hook;' "$KSUD_H"
+          # Modify ksud.h: Add extern declarations if not already present
+          if ! grep -q "extern bool ksu_vfs_read_hook" "$KSUD_H"; then
+            sed -i '/#include <linux\/types.h>/a extern bool ksu_vfs_read_hook;\nextern bool ksu_execveat_hook;\nextern bool ksu_input_hook;' "$KSUD_H"
+          fi
 
           echo "Custom hooks applied successfully."
 
-      - name: Set up SUSFS
+      - name: Set up SUSFS and Apply Patches
         if: github.event.inputs.SUSFS_ENABLED == 'true'
         run: |
           cd kernel_workspace
           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}
-          git clone https://github.com/TheWildJames/kernel_patches.git
+          git clone https://github.com/WildPlusKernel/kernel_patches.git
           cd kernel_platform
-          cp ../kernel_patches/next/0001-kernel-patch-susfs-v1.5.5-to-KernelSU-Next-v1.0.5.patch ./KernelSU-Next/
+          
+          # Copy SUSFS patches
           cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch ./common/
           cp -r ../susfs4ksu/kernel_patches/fs/* ./common/fs/
           cp -r ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
-
-          # Apply patches
-          cd ./KernelSU-Next
+          
+          # Apply SUSFS patch for KernelSU Next
+          cd KernelSU-Next
+          cp ../../kernel_patches/next/0001-kernel-patch-susfs-v1.5.5-to-KernelSU-Next-v1.0.5.patch ./
           patch -p1 < 0001-kernel-patch-susfs-v1.5.5-to-KernelSU-Next-v1.0.5.patch || true
+          
+          # Apply common SUSFS patch
           cd ../common
           patch -p1 < 50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch || true
-          cp ../../kernel_patches/hooks/new_hooks.patch ./
-          patch -p1 -F 3 < new_hooks.patch || true
+          
+          # Apply new hooks patch
+          cp ../../kernel_patches/next/next_hooks.patch ./
+          patch -p1 -F 3 < next_hooks.patch || true
+          
+          # Apply hide stuff patch
           cp ../../kernel_patches/69_hide_stuff.patch ./
           patch -p1 -F 3 < 69_hide_stuff.patch || true
+          
           git add -A && git commit -a -m "BUILD Kernel with SUSFS v${{ github.event.inputs.SUSFS_VERSION }}"
           cd ../msm-kernel
           git add -A && git commit -a -m "Update for SUSFS"
           cd ..
+
+      - name: Add KernelSU Next and SUSFS Configuration
+        if: github.event.inputs.KSUNEXT_ENABLED == 'true'
+        run: |
+          cd kernel_workspace/kernel_platform
+          CONFIG_FILE=./common/arch/arm64/configs/gki_defconfig
+          
+          # Add KernelSU and SUSFS config settings
+          echo "CONFIG_KSU=y" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_WITH_KPROBES=n" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_SUSFS=y" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_SUSFS_SUS_OVERLAYFS=n" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> "$CONFIG_FILE"
 
       - name: Build kernel
         run: |
@@ -175,7 +217,7 @@ jobs:
 
       - name: Make AnyKernel3
         run: |
-          git clone https://github.com/Kernel-SU/AnyKernel3 --depth=1
+          git clone https://github.com/WildPlusKernel/AnyKernel3.git -b gki-2.0
           rm -rf ./AnyKernel3/.git
           cp kernel_workspace/kernel_platform/out/msm-${{ github.event.inputs.CPUD }}-${{ github.event.inputs.CPUD }}-gki/dist/Image ./AnyKernel3/
 
