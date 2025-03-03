@@ -1,4 +1,4 @@
-name: KernelSU Next Best with VFS Hooks
+name: KernelSU Next
 on:
   workflow_dispatch:
     inputs:
@@ -89,11 +89,11 @@ jobs:
           sed -i 's/CONFIG_LTO_CLANG_FULL=y/CONFIG_LTO_CLANG_THIN=y/' "./common/arch/arm64/configs/gki_defconfig"
           sed -i 's/CONFIG_LTO_CLANG_NONE=y/CONFIG_LTO_CLANG_THIN=y/' "./common/arch/arm64/configs/gki_defconfig"
 
-      - name: Define DEFCONFIG_PATH and Configure VFS Hooks
+      - name: Define DEFCONFIG_PATH and Add Custom Config
         run: |
           cd kernel_workspace/kernel_platform
           DEFCONFIG_PATH="./common/arch/arm64/configs/gki_defconfig"
-          echo "Adding configuration settings to defconfig for VFS hooks..."
+          echo "Adding configuration settings to defconfig..."
           echo "CONFIG_KSU=y" >> "$DEFCONFIG_PATH"
           echo "CONFIG_KSU_WITH_KPROBES=n" >> "$DEFCONFIG_PATH"
           echo "CONFIG_KSU_SUSFS=y" >> "$DEFCONFIG_PATH"
@@ -131,7 +131,7 @@ jobs:
           echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
           sed -i "s/DKSU_VERSION=11998/DKSU_VERSION=${KSU_VERSION}/" kernel/Makefile
 
-      - name: Set up SUSFS with VFS Hooks
+      - name: Set up SUSFS
         if: github.event.inputs.SUSFS_ENABLED == 'true'
         run: |
           cd kernel_workspace
@@ -147,14 +147,11 @@ jobs:
           patch -p1 < 0001-kernel-patch-susfs-v1.5.5-to-KernelSU-Next-v1.0.5.patch || true
           cd ../common
           patch -p1 < 50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch || true
-          # 添加额外的 VFS hooks 补丁（假设已有）
-          cp ../../kernel_patches/hooks/new_hooks.patch ./
-          patch -p1 -F 3 < new_hooks.patch || true
           cp ../../kernel_patches/69_hide_stuff.patch ./
           patch -p1 -F 3 < 69_hide_stuff.patch || true
-          git add -A && git commit -a -m "BUILD Kernel with SUSFS v${{ github.event.inputs.SUSFS_VERSION }} and VFS hooks"
+          git add -A && git commit -a -m "BUILD Kernel with SUSFS v${{ github.event.inputs.SUSFS_VERSION }}"
           cd ../msm-kernel
-          git add -A && git commit -a -m "Update for SUSFS and VFS hooks"
+          git add -A && git commit -a -m "Update for SUSFS"
           cd ..
 
       - name: Build kernel
