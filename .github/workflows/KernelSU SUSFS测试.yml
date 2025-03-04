@@ -22,10 +22,6 @@ on:
         description: "内核版本"
         required: true
         default: '5.10'
-      SUB_LEVEL:
-        description: "子版本号"
-        required: true
-        default: '0'
       BUILD_METHOD:
         description: "编译方式"
         required: true
@@ -52,7 +48,7 @@ jobs:
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
       CCACHE_NOHASHDIR: "true"
       CCACHE_HARDLINK: "true"
-      CONFIG: ${{ inputs.ANDROID_VERSION }}-${{ inputs.KERNEL_VERSION }}-${{ inputs.SUB_LEVEL }}
+      CONFIG: ${{ inputs.ANDROID_VERSION }}-${{ inputs.KERNEL_VERSION }}
 
     steps:
       - name: Maximize build space
@@ -95,9 +91,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.ccache
-          key: ${{ inputs.ANDROID_VERSION }}-${{ inputs.KERNEL_VERSION }}-${{ inputs.SUB_LEVEL }}-ccache-${{ github.sha }}
+          key: ${{ inputs.ANDROID_VERSION }}-${{ inputs.KERNEL_VERSION }}-ccache-${{ github.sha }}
           restore-keys: |
-            ${{ inputs.ANDROID_VERSION }}-${{ inputs.KERNEL_VERSION }}-${{ inputs.SUB_LEVEL }}-ccache-
+            ${{ inputs.ANDROID_VERSION }}-${{ inputs.KERNEL_VERSION }}-ccache-
 
       - name: Initialize repo and sync
         run: |
@@ -202,7 +198,7 @@ jobs:
       - name: Create ZIP Files for AnyKernel3
         run: |
           cd kernel_workspace/AnyKernel3
-          ZIP_NAME="${{ inputs.ANDROID_VERSION }}-${{ inputs.KERNEL_VERSION }}.${{ inputs.SUB_LEVEL }}-AnyKernel3.zip"
+          ZIP_NAME="${{ inputs.ANDROID_VERSION }}-${{ inputs.KERNEL_VERSION }}-AnyKernel3.zip"
           mv ../kernel_platform/out/msm-${{ github.event.inputs.CPUD }}-${{ github.event.inputs.CPUD }}-gki/dist/Image ./Image
           zip -r "../$ZIP_NAME" ./*
           rm ./Image
