@@ -1,4 +1,4 @@
-name: KernelSU
+name: KernelSU N
 on:
   workflow_dispatch:
     inputs:
@@ -64,7 +64,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt update && sudo apt upgrade -y
-          sudo apt install -y python3 git curl patch bc bison flex libssl-dev
+          sudo apt install -y python3 git curl patch bc bison flex libssl-dev gcc-aarch64-linux-gnu
 
       - name: Install repo tool
         run: |
@@ -114,8 +114,8 @@ jobs:
           echo "CONFIG_KSU_WITH_KPROBES=n" >> "$CONFIG_FILE"
           echo "CONFIG_KSU_SUSFS=y" >> "$CONFIG_FILE"
           echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> "$CONFIG_FILE"
-          # 运行 savedefconfig 并覆盖
-          make savedefconfig
+          # 运行 savedefconfig
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- savedefconfig
           cp ./defconfig "$CONFIG_FILE"
           echo "Updated gki_defconfig after savedefconfig:"
           cat "$CONFIG_FILE"
