@@ -1,4 +1,4 @@
-name: KernelSU Next
+name: KernelSU
 on:
   workflow_dispatch:
     inputs:
@@ -64,7 +64,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt update && sudo apt upgrade -y
-          sudo apt install -y python3 git curl patch bc bison flex libssl-dev make gcc g++ libelf-dev
+          sudo apt install -y python3 git curl patch bc bison flex libssl-dev
 
       - name: Install repo tool
         run: |
@@ -89,38 +89,6 @@ jobs:
           sed -i 's/CONFIG_LTO_CLANG_FULL=y/CONFIG_LTO_CLANG_THIN=y/' "./common/arch/arm64/configs/gki_defconfig"
           sed -i 's/CONFIG_LTO_CLANG_NONE=y/CONFIG_LTO_CLANG_THIN=y/' "./common/arch/arm64/configs/gki_defconfig"
 
-      - name: Define DEFCONFIG_PATH and Add Custom Config
-        run: |
-          cd kernel_workspace/kernel_platform
-          DEFCONFIG_PATH="./common/arch/arm64/configs/gki_defconfig"
-          echo "Adding configuration settings to defconfig..."
-          echo "CONFIG_KSU=y" >> "$DEFCONFIG_PATH"
-          echo "CONFIG_KSU_WITH_KPROBES=n" >> "$DEFCONFIG_PATH"
-          echo "CONFIG_KSU_SUSFS=y" >> "$DEFCONFIG_PATH"
-          echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> "$DEFCONFIG_PATH"
-          echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> "$DEFCONFIG_PATH"
-          echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> "$DEFCONFIG_PATH"
-          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> "$DEFCONFIG_PATH"
-          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >> "$DEFCONFIG_PATH"
-          echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> "$DEFCONFIG_PATH"
-          echo "CONFIG_KSU_SUSFS_SUS_OVERLAYFS=n" >> "$DEFCONFIG_PATH"
-          echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> "$DEFCONFIG_PATH"
-          echo "CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y" >> "$DEFCONFIG_PATH"
-          echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> "$DEFCONFIG_PATH"
-          echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> "$DEFCONFIG_PATH"
-          echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> "$DEFCONFIG_PATH"
-          echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> "$DEFCONFIG_PATH"
-          echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> "$DEFCONFIG_PATH"
-          echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> "$DEFCONFIG_PATH"
-          echo "CONFIG_TMPFS_XATTR=y" >> "$DEFCONFIG_PATH"
-          echo "CONFIG_TMPFS_POSIX_ACL=y" >> "$DEFCONFIG_PATH"
-          echo "CONFIG_IP_NF_TARGET_TTL=y" >> "$DEFCONFIG_PATH"
-          echo "CONFIG_IP6_NF_TARGET_HL=y" >> "$DEFCONFIG_PATH"
-          echo "CONFIG_IP6_NF_MATCH_HL=y" >> "$DEFCONFIG_PATH"
-          # 验证配置是否生效
-          make -C common O=../out/msm-${{ github.event.inputs.CPUD }}-${{ github.event.inputs.CPUD }}-gki ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- gki_defconfig
-          grep "CONFIG_KSU_SUSFS" ../out/msm-${{ github.event.inputs.CPUD }}-${{ github.event.inputs.CPUD }}-gki/.config || echo "Warning: CONFIG_KSU_SUSFS not found!"
-
       - name: Set up KernelSU Next
         if: github.event.inputs.KSUNEXT_ENABLED == 'true'
         run: |
@@ -131,28 +99,96 @@ jobs:
           echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
           sed -i "s/DKSU_VERSION=11998/DKSU_VERSION=${KSU_VERSION}/" kernel/Makefile
 
-      - name: Set up SUSFS
+      - name: Configure KernelSU and SUSFS Settings
+        if: github.event.inputs.KSUNEXT_ENABLED == 'true'
+        run: |
+          cd kernel_workspace/kernel_platform
+          CONFIG_FILE=./common/arch/arm64/configs/gki_defconfig
+          if [ ! -f "$CONFIG_FILE" ]; then
+            echo "Error: gki_defconfig not found"; exit 1
+          fi
+          # 清理现有相关配置
+          sed -i '/CONFIG_KSU/d' "$CONFIG_FILE"
+          sed -i '/CONFIG_TMPFS/d' "$CONFIG_FILE"
+          sed -i '/CONFIG_IP/d' "$CONFIG_FILE"
+          sed -i '/CONFIG_NET_SCH_FQ/d' "$CONFIG_FILE"
+          sed -i '/CONFIG_TCP_CONG/d' "$CONFIG_FILE"
+
+          # 添加 KernelSU 配置
+          echo "CONFIG_KSU=y" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_WITH_KPROBES=n" >> "$CONFIG_FILE"
+
+          # 添加 SUSFS 配置
+          echo "CONFIG_KSU_SUSFS=y" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_SUSFS_SUS_OVERLAYFS=n" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> "$CONFIG_FILE"
+          echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> "$CONFIG_FILE"
+
+          # 添加 tmpfs 配置
+          echo "CONFIG_TMPFS_XATTR=y" >> "$CONFIG_FILE"
+          echo "CONFIG_TMPFS_POSIX_ACL=y" >> "$CONFIG_FILE"
+
+          # 添加网络相关配置
+          echo "CONFIG_IP_NF_TARGET_TTL=y" >> "$CONFIG_FILE"
+          echo "CONFIG_IP6_NF_TARGET_HL=y" >> "$CONFIG_FILE"
+          echo "CONFIG_IP6_NF_MATCH_HL=y" >> "$CONFIG_FILE"
+
+          # 添加 BBR 和网络调度配置
+          echo "CONFIG_TCP_CONG_ADVANCED=y" >> "$CONFIG_FILE"
+          echo "CONFIG_TCP_CONG_BBR=y" >> "$CONFIG_FILE"
+          echo "CONFIG_NET_SCH_FQ=y" >> "$CONFIG_FILE"
+          echo "CONFIG_TCP_CONG_BIC=n" >> "$CONFIG_FILE"
+          echo "CONFIG_TCP_CONG_WESTWOOD=n" >> "$CONFIG_FILE"
+          echo "CONFIG_TCP_CONG_HTCP=n" >> "$CONFIG_FILE"
+
+      - name: Clone SUSFS and Kernel Patches
         if: github.event.inputs.SUSFS_ENABLED == 'true'
         run: |
           cd kernel_workspace
           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}
           git clone https://github.com/TheWildJames/kernel_patches.git
-          cd kernel_platform
-          cp ../kernel_patches/next/0001-kernel-patch-susfs-v1.5.5-to-KernelSU-Next-v1.0.5.patch ./KernelSU-Next/
+
+      - name: Apply SUSFS Patches for KernelSU-Next
+        if: github.event.inputs.SUSFS_ENABLED == 'true' && github.event.inputs.KSUNEXT_ENABLED == 'true'
+        run: |
+          cd kernel_workspace/kernel_platform
+          # 复制 SUSFS 文件
           cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch ./common/
           cp -r ../susfs4ksu/kernel_patches/fs/* ./common/fs/
           cp -r ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
-          # 应用补丁
+          # 应用 KernelSU-Next 特定补丁
+          cp ../kernel_patches/next/0001-kernel-patch-susfs-v1.5.5-to-KernelSU-Next-v1.0.5.patch ./KernelSU-Next/
           cd ./KernelSU-Next
           patch -p1 < 0001-kernel-patch-susfs-v1.5.5-to-KernelSU-Next-v1.0.5.patch || true
+          # 应用通用 SUSFS 补丁
           cd ../common
           patch -p1 < 50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch || true
+
+      - name: Apply New Hooks Patches
+        if: github.event.inputs.SUSFS_ENABLED == 'true' && github.event.inputs.KSUNEXT_ENABLED == 'true'
+        run: |
+          cd kernel_workspace/kernel_platform/common
+          cp ../../kernel_patches/next/next_hooks.patch ./
+          patch -p1 -F 3 < next_hooks.patch
+
+      - name: Apply Hide Stuff Patches
+        if: github.event.inputs.SUSFS_ENABLED == 'true' && github.event.inputs.KSUNEXT_ENABLED == 'true'
+        run: |
+          cd kernel_workspace/kernel_platform/common
           cp ../../kernel_patches/69_hide_stuff.patch ./
-          patch -p1 -F 3 < 69_hide_stuff.patch || true
-          git add -A && git commit -a -m "BUILD Kernel with SUSFS v${{ github.event.inputs.SUSFS_VERSION }}"
-          cd ../msm-kernel
-          git add -A && git commit -a -m "Update for SUSFS"
-          cd ..
+          patch -p1 -F 3 < 69_hide_stuff.patch
 
       - name: Build kernel
         run: |
