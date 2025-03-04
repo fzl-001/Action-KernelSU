@@ -116,8 +116,8 @@ jobs:
          cd ../common
          patch -p1 < 50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch || true
 
-         cp ../../kernel_patches/hooks/new_hooks.patch ./
-         patch -p1 -F 3 < new_hooks.patch
+         cp ../../kernel_patches/hooks/next_hooks.patch ./
+         patch -p1 -F 3 < next_hooks.patch
 
          # Download and apply VFS fix patch before 69_hide_stuff.patch
          curl -O https://raw.githubusercontent.com/TanakaLun/Action-Kernel/refs/heads/main/vfs_fix.patch
