@@ -110,46 +110,31 @@ jobs:
           # 清理现有相关配置
           sed -i '/CONFIG_KSU/d' "$CONFIG_FILE"
           sed -i '/CONFIG_TMPFS/d' "$CONFIG_FILE"
-          sed -i '/CONFIG_IP/d' "$CONFIG_FILE"
-          sed -i '/CONFIG_NET_SCH_FQ/d' "$CONFIG_FILE"
-          sed -i '/CONFIG_TCP_CONG/d' "$CONFIG_FILE"
 
-          # 添加 KernelSU 配置
+          # 添加核心 KernelSU 配置
           echo "CONFIG_KSU=y" >> "$CONFIG_FILE"
           echo "CONFIG_KSU_WITH_KPROBES=n" >> "$CONFIG_FILE"
 
-          # 添加 SUSFS 配置
+          # 添加核心 SUSFS 配置
           echo "CONFIG_KSU_SUSFS=y" >> "$CONFIG_FILE"
-          echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> "$CONFIG_FILE"
-          echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> "$CONFIG_FILE"
-          echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> "$CONFIG_FILE"
-          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> "$CONFIG_FILE"
-          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >> "$CONFIG_FILE"
-          echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> "$CONFIG_FILE"
-          echo "CONFIG_KSU_SUSFS_SUS_OVERLAYFS=n" >> "$CONFIG_FILE"
-          echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> "$CONFIG_FILE"
-          echo "CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y" >> "$CONFIG_FILE"
-          echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> "$CONFIG_FILE"
-          echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> "$CONFIG_FILE"
-          echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> "$CONFIG_FILE"
-          echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> "$CONFIG_FILE"
-          echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> "$CONFIG_FILE"
+          # echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> "$CONFIG_FILE"
+          # echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> "$CONFIG_FILE"
+          # echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> "$CONFIG_FILE"
+          # echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> "$CONFIG_FILE"
+          # echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >> "$CONFIG_FILE"
+          # echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> "$CONFIG_FILE"
+          # echo "CONFIG_KSU_SUSFS_SUS_OVERLAYFS=n" >> "$CONFIG_FILE"
+          # echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> "$CONFIG_FILE"
+          # echo "CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y" >> "$CONFIG_FILE"
+          # echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> "$CONFIG_FILE"
+          # echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> "$CONFIG_FILE"
+          # echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> "$CONFIG_FILE"
+          # echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> "$CONFIG_FILE"
+          # echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> "$CONFIG_FILE"
           echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> "$CONFIG_FILE"
 
-          # 添加 tmpfs 配置
-          echo "CONFIG_TMPFS_XATTR=y" >> "$CONFIG_FILE"
-          echo "CONFIG_TMPFS_POSIX_ACL=y" >> "$CONFIG_FILE"
-
-          # 注释掉网络相关配置
-          # echo "CONFIG_IP_NF_TARGET_TTL=y" >> "$CONFIG_FILE"
-          # echo "CONFIG_IP6_NF_TARGET_HL=y" >> "$CONFIG_FILE"
-          # echo "CONFIG_IP6_NF_MATCH_HL=y" >> "$CONFIG_FILE"
-          # echo "CONFIG_TCP_CONG_ADVANCED=y" >> "$CONFIG_FILE"
-          # echo "CONFIG_TCP_CONG_BBR=y" >> "$CONFIG_FILE"
-          # echo "CONFIG_NET_SCH_FQ=y" >> "$CONFIG_FILE"
-          # echo "CONFIG_TCP_CONG_BIC=n" >> "$CONFIG_FILE"
-          # echo "CONFIG_TCP_CONG_WESTWOOD=n" >> "$CONFIG_FILE"
-          # echo "CONFIG_TCP_CONG_HTCP=n" >> "$CONFIG_FILE"
+          # echo "CONFIG_TMPFS_XATTR=y" >> "$CONFIG_FILE"
+          # echo "CONFIG_TMPFS_POSIX_ACL=y" >> "$CONFIG_FILE"
 
       - name: Clone SUSFS and Kernel Patches
         if: github.event.inputs.SUSFS_ENABLED == 'true'
@@ -189,6 +174,8 @@ jobs:
         run: |
           cd kernel_workspace/kernel_platform
           sed -i 's/check_defconfig//' ./oplus/build/oplus_build_kernel.sh || echo "No check_defconfig found"
+          sed -i 's/make savedefconfig/#make savedefconfig/' ./oplus/build/oplus_build_kernel.sh
+          sed -i 's/exit 1/#exit 1/' ./oplus/build/oplus_build_kernel.sh
 
       - name: Debug gki_defconfig
         run: |
