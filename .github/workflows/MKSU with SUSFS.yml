@@ -140,7 +140,7 @@ jobs:
         if: github.event.inputs.SUSFS_ENABLED == 'true'
         run: |
           cd kernel_workspace/kernel_platform/common
-          cp ../../kernel_patches/new_hooks.patch ./
+          cp ../../kernel_patches/hooks/new_hooks.patch ./
           patch -p1 -F 3 < new_hooks.patch || echo "Patch applied with conflicts, continuing..."
           git add -A && git commit -a -m "Apply new hooks patch" || echo "Nothing to commit"
 
