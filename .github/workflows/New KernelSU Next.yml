@@ -1,4 +1,4 @@
-name: New KernelSU Next
+name: KernelSU Next New
 on:
   workflow_dispatch:
     inputs:
@@ -103,7 +103,7 @@ jobs:
         run: |
          cd kernel_workspace
          git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}
-         git clone https://github.com/TheWildJames/kernel_patches.git
+         git clone https://github.com/WildPlusKernel/kernel_patches.git
          cd kernel_platform
          cp ../kernel_patches/next/0001-kernel-patch-susfs-v1.5.5-to-KernelSU-Next-v1.0.5.patch ./KernelSU-Next/
          cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch ./common/
@@ -116,10 +116,10 @@ jobs:
          cd ../common
          patch -p1 < 50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch || true
 
+         # Replace next_hooks.patch with syscall_hooks.patch
          cp ../../kernel_patches/next/syscall_hooks.patch ./
          patch -p1 -F 3 < syscall_hooks.patch
 
-         cd common  # Move back to common directory for the next patch
          cp ../../kernel_patches/69_hide_stuff.patch ./
          patch -p1 -F 3 < 69_hide_stuff.patch
          git add -A && git commit -a -m "BUILD Kernel with SUSFS v${{ github.event.inputs.SUSFS_VERSION }}"
