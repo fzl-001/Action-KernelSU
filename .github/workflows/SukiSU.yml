@@ -54,7 +54,6 @@ jobs:
           remove-android: 'true'
           remove-haskell: 'true'
           remove-codeql: 'true'
-          remove-codeql: 'true'
           
       - name: Configure Git
         run: |
