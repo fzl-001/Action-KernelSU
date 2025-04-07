@@ -95,7 +95,7 @@ jobs:
         run: |
           cd kernel_workspace/kernel_platform
           # Clone the specified KernelSU fork
-          git clone https://github.com/5ec1cff/KernelSU.git -b main
+          curl -LSs "https://raw.githubusercontent.com/5ec1cff/KernelSU/refs/heads/main/kernel/setup.sh" | bash -
           mv KernelSU KernelSU_dir # Rename to avoid conflicts
           cd KernelSU_dir
           KSU_VERSION=$(git rev-list --count HEAD)
