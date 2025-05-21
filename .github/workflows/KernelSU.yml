@@ -127,15 +127,9 @@ jobs:
           patch -p1 -F 3 < new_hooks.patch || echo "Patch applied with conflicts, continuing..."
           cp ../../kernel_patches/mksu/fix.patch ./
           patch -p1 < fix.patch || echo "Patch conflicts detected, continuing with unresolved changes..."
-          cp ../kernel_patches/apk_sign.c_fix.patch ./
+          cp ../../kernel_patches/apk_sign.c_fix.patch ./
           patch -p1 -F 3 < apk_sign.c_fix.patch
-             
-          cp ../kernel_patches/core_hook.c_fix.patch ./
-          patch -p1 --fuzz=3 < ./core_hook.c_fix.patch
-           
-          cp ../kernel_patches/selinux.c_fix.patch ./
-          patch -p1 -F 3 < selinux.c_fix.patch
-           
+          
           cd ../
 
           
