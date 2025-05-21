@@ -112,6 +112,7 @@ jobs:
           cd kernel_workspace
           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}
           git clone https://github.com/WildPlusKernel/kernel_patches.git
+          git clone https://github.com/TanakaLun/kernel_patches4mksu.git
           cd kernel_platform
           cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch ./common/
           cp -r ../susfs4ksu/kernel_patches/fs/* ./common/fs/
@@ -127,8 +128,10 @@ jobs:
           patch -p1 -F 3 < new_hooks.patch || echo "Patch applied with conflicts, continuing..."
           cp ../../kernel_patches/mksu/fix.patch ./
           patch -p1 < fix.patch || echo "Patch conflicts detected, continuing with unresolved changes..."
-          cd ..
-          
+          cp ../kernel_patches4mksu/mksu/vfs_fix.patch ./KernelSU/
+          cd ./KernelSU
+          patch -p1 < vfs_fix.patch
+          cd ../
       - name: Build kernel
         run: |
           cd kernel_workspace
