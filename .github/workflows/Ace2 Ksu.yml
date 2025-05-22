@@ -94,12 +94,12 @@ jobs:
           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}
           git clone https://github.com/WildPlusKernel/kernel_patches.git
           cd kernel_platform
-          cp ../kernel_patches/next/kernel-patch-susfs-v1.5.7-to-KernelSU-Next.patch ./KernelSU-Next/
+          cp ../kernel_patches/next/0001_susfs_157_for_ksunext.patch ./KernelSU-Next/
           cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch ./common/
           cp -r ../susfs4ksu/kernel_patches/fs/* ./common/fs/
           cp -r ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
           cd KernelSU-Next
-          patch -p1 < kernel-patch-susfs-v1.5.7-to-KernelSU-Next.patch || true
+          patch -p1 < 0001_susfs_157_for_ksunext.patch || true
           cd ../common
           patch -p1 < 50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch || true
           cp ../../kernel_patches/next/syscall_hooks.patch ./
@@ -108,9 +108,15 @@ jobs:
           patch -p1 -F 3 < manager.patch
           cp ../../susfs4ksu/kernel_patches/fix.corehook.c.patch ./KernelSU-Next/
           cp ../../susfs4ksu/kernel_patches/fix.ksud.c.patch ./KernelSU-Next/
+          cp ../../susfs4ksu/kernel_patches/fix_selinux.c.patch ./KernelSU-Next/
+          cp ../../susfs4ksu/kernel_patches/fix_sucompat.c.patch ./KernelSU-Next/
+          cp ../../susfs4ksu/kernel_patches/fix_apk_sign.c.patch ./KernelSU-Next/
           cd KernelSU-Next
           patch -p1 -F 3 < fix.corehook.c.patch || true
           patch -p1 -F 3 < fix.ksud.c.patch || true
+          patch -p1 -F 3 < fix_selinux.c.patch || true
+          patch -p1 -F 3 < fix_sucompat.c.patch || true
+          patch -p1 -F 3 < fix_apk_sign.c.patch || true
           cd ../..
           cd kernel_platform/common
           git add -A && git commit -m "Apply SUSFS and KSU patches" || true
