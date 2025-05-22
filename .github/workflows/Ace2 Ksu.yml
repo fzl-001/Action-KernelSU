@@ -1,177 +1,170 @@
-name: Ace2 Ksu
+name: Build OnePlus Ace 2 Kernel
+
 on:
   workflow_dispatch:
     inputs:
       CPU:
-        description: "分支"
+        description: "OnePlus 内核分支（如 sm8475）"
         required: true
         default: 'sm8475'
       FEIL:
-        description: "配置文件"
+        description: "OnePlus 内核配置文件（如 oneplus_ace2_v）"
         required: true
         default: 'oneplus_ace2_v'
       CPUD:
-        description: "处理器代号"
+        description: "设备代号（如 waipio）"
         required: true
         default: 'waipio'
       ANDROID_VERSION:
-        description: "内核安卓版本"
+        description: "安卓版本（如 android12）"
         required: true
         default: 'android12'
       KERNEL_VERSION:
-        description: "内核版本"
+        description: "内核版本（如 5.10）"
         required: true
         default: '5.10'
       BUILD_METHOD:
-        description: "编译方式"
+        description: "编译方式（如 gki）"
         required: true
         default: 'gki'
       KSUNEXT_ENABLED:
-        description: "添加 KSU Next"
+        description: "是否集成 KernelSU-Next"
         required: true
         type: boolean
         default: true
       SUSFS_ENABLED:
-        description: "添加 SUSFS"
+        description: "是否集成 SUSFS"
         required: true
         type: boolean
         default: true
       SUSFS_VERSION:
-        description: "SUSFS 版本"
+        description: "SUSFS 版本（如 v1.5.5）"
         required: true
         default: 'v1.5.5'
+
 jobs:
   build:
     runs-on: ubuntu-latest
-    
+
     steps:
-      - name: Maximize build space
-        uses: easimon/maximize-build-space@master
-        with:
-          root-reserve-mb: 8192
-          temp-reserve-mb: 2048
-          remove-dotnet: 'true'
-          remove-android: 'true'
-          remove-haskell: 'true'
-          remove-codeql: 'true'
-          
+      - name: Install Dependencies
+        run: |
+          sudo apt update && sudo apt upgrade -y
+          sudo apt install -y python3 git curl repo patch bc bison flex libssl-dev zip
+
       - name: Configure Git
         run: |
-         git config --global user.name "build"
-         git config --global user.email "70756062@qq.com"
+          git config --global user.name "build"
+          git config --global user.email "build@example.com"
 
-      - name: Install dependencies
+      - name: Initialize and Sync Kernel Repo
         run: |
-         sudo apt update && sudo apt upgrade -y
-         sudo apt install -y python3 git curl patch bc bison flex libssl-dev
+          mkdir kernel_workspace
+          cd kernel_workspace
+          repo init -u https://github.com/OnePlusOSS/kernel_manifest.git \
+                   -b "refs/heads/oneplus/${{ github.event.inputs.CPU }}" \
+                   -m "${{ github.event.inputs.FEIL }}.xml" --depth=1
+          repo sync --force-sync --no-tags --no-clone-bundle -j1
+          rm -f kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports"
+          rm -f kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports"
+          sed -i 's/ -dirty//g' kernel_platform/common/scripts/setlocalversion
+          sed -i 's/ -dirty//g' kernel_platform/msm-kernel/scripts/setlocalversion
 
-      - name: Install repo tool
+      - name: Set LTO to ThinLTO
         run: |
-         curl https://storage.googleapis.com/git-repo-downloads/repo > ~/repo
-         chmod a+x ~/repo
-         sudo mv ~/repo /usr/local/bin/repo
+          cd kernel_workspace/kernel_platform
+          sed -i 's/CONFIG_LTO=n/CONFIG_LTO=y/' ./common/arch/arm64/configs/gki_defconfig
+          sed -i 's/CONFIG_LTO_CLANG_FULL=y/CONFIG_LTO_CLANG_THIN=y/' ./common/arch/arm64/configs/gki_defconfig
+          sed -i 's/CONFIG_LTO_CLANG_NONE=y/CONFIG_LTO_CLANG_THIN=y/' ./common/arch/arm64/configs/gki_defconfig
 
-      - name: Initialize repo and sync
+      - name: Set up KernelSU-Next
+        if: ${{ github.event.inputs.KSUNEXT_ENABLED == 'true' }}
         run: |
-         mkdir kernel_workspace && cd kernel_workspace
-         repo init -u https://github.com/OnePlusOSS/kernel_manifest.git -b refs/heads/oneplus/${{ github.event.inputs.CPU }} -m ${{ github.event.inputs.FEIL }}.xml --depth=1
-         repo sync
-         cd kernel_platform
-         sed -i 's/ -dirty//g' common/scripts/setlocalversion
-         sed -i 's/ -dirty//g' msm-kernel/scripts/setlocalversion
-         sed -i 's/ -dirty//g' external/dtc/scripts/setlocalversion
-         sed -i '$i res=$(echo "$res" | sed '\''s/-dirty//g'\'')' common/scripts/setlocalversion
-         git add -A
-         git commit -m "Force remove -dirty suffix from kernel version"
+          cd kernel_workspace/kernel_platform
+          curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
+          cd KernelSU-Next
+          KSU_VERSION=$(( $(git rev-list --count HEAD) + 10200 ))
+          echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
+          sed -i "s/DKSU_VERSION=[0-9]*/DKSU_VERSION=${KSU_VERSION}/" kernel/Makefile
 
-      - name: Set LTO to THIN
+      - name: Clone and Apply SUSFS & Other Patches
+        if: ${{ github.event.inputs.SUSFS_ENABLED == 'true' }}
         run: |
-         cd kernel_workspace/kernel_platform
-         sed -i 's/CONFIG_LTO=n/CONFIG_LTO=y/' "./common/arch/arm64/configs/gki_defconfig"
-         sed -i 's/CONFIG_LTO_CLANG_FULL=y/CONFIG_LTO_CLANG_THIN=y/' "./common/arch/arm64/configs/gki_defconfig"
-         sed -i 's/CONFIG_LTO_CLANG_NONE=y/CONFIG_LTO_CLANG_THIN=y/' "./common/arch/arm64/configs/gki_defconfig"
+          cd kernel_workspace
+          git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}
+          git clone https://github.com/WildPlusKernel/kernel_patches.git
+          cd kernel_platform
+          cp ../kernel_patches/next/kernel-patch-susfs-v1.5.7-to-KernelSU-Next.patch ./KernelSU-Next/
+          cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch ./common/
+          cp -r ../susfs4ksu/kernel_patches/fs/* ./common/fs/
+          cp -r ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
+          cd KernelSU-Next
+          patch -p1 < kernel-patch-susfs-v1.5.7-to-KernelSU-Next.patch || true
+          cd ../common
+          patch -p1 < 50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch || true
+          cp ../../kernel_patches/next/syscall_hooks.patch ./
+          patch -p1 -F 3 < syscall_hooks.patch
+          cp ../../kernel_patches/manager.patch ./
+          patch -p1 -F 3 < manager.patch
+          cp ../../susfs4ksu/kernel_patches/fix.corehook.c.patch ./KernelSU-Next/
+          cp ../../susfs4ksu/kernel_patches/fix.ksud.c.patch ./KernelSU-Next/
+          cd KernelSU-Next
+          patch -p1 -F 3 < fix.corehook.c.patch || true
+          patch -p1 -F 3 < fix.ksud.c.patch || true
+          cd ../..
+          cd kernel_platform/common
+          git add -A && git commit -m "Apply SUSFS and KSU patches" || true
+          cd ../msm-kernel
+          git add -A && git commit -m "Apply SUSFS and KSU patches" || true
 
-      - name: Set up KernelSU
-        if: github.event.inputs.KSUNEXT_ENABLED == 'true'
+      - name: Add KernelSU Configuration Flags
         run: |
-         cd kernel_workspace/kernel_platform
-         curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
-         cd KernelSU
-         KSU_VERSION=$(expr $(/usr/bin/git rev-list --count HEAD) "+" 10200)
-         echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
-         sed -i "s/DKSU_VERSION=11998/DKSU_VERSION=${KSU_VERSION}/" kernel/Makefile
-        
-      - name: Set up SUSFS
-        if: github.event.inputs.SUSFS_ENABLED == 'true'
+          cd kernel_workspace/kernel_platform/common/arch/arm64/configs
+          echo "CONFIG_KSU=y" >> gki_defconfig
+          echo "CONFIG_KSU_WITH_KPROBES=n" >> gki_defconfig
+          echo "CONFIG_KSU_SUSFS=y" >> gki_defconfig
+          echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> gki_defconfig
+          echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> gki_defconfig
+          echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> gki_defconfig
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> gki_defconfig
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >> gki_defconfig
+          echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> gki_defconfig
+          echo "CONFIG_KSU_SUSFS_SUS_OVERLAYFS=n" >> gki_defconfig
+          echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> gki_defconfig
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y" >> gki_defconfig
+          echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> gki_defconfig
+          echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> gki_defconfig
+          echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> gki_defconfig
+          echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> gki_defconfig
+          echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> gki_defconfig
+          echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> gki_defconfig
+          sed -i '2s/check_defconfig//' ../../common/build.config.gki
+
+      - name: Build Kernel (single-core)
         run: |
-         cd kernel_workspace
-         git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}
-         git clone https://github.com/WildPlusKernel/kernel_patches.git
-         cd kernel_platform
-         cp ../kernel_patches/hooks/ksu_hooks.patch ./KernelSU/
-         cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch ./common/
-         cp -r ../susfs4ksu/kernel_patches/fs/* ./common/fs/
-         cp -r ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
+          cd kernel_workspace
+          MAKEFLAGS="-j1" ./kernel_platform/oplus/build/oplus_build_kernel.sh ${{ github.event.inputs.CPUD }} ${{ github.event.inputs.BUILD_METHOD }}
 
-         # Apply patches
-         cd ./KernelSU
-         patch -p1 < ksu_hooks.patch || true
-         cd ../common
-         patch -p1 < 50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch || true
-
-         # Replace next_hooks.patch with syscall_hooks.patch
-         cp ../../kernel_patches/hooks/new_hooks.patch ./
-         patch -p1 -F 3 < new_hooks.patch
-
-         cp ../../kernel_patches/69_hide_stuff.patch ./
-         patch -p1 -F 3 < 69_hide_stuff.patch
-         git add -A && git commit -a -m "BUILD Kernel with SUSFS v${{ github.event.inputs.SUSFS_VERSION }}"
-         cd ../msm-kernel
-         git add -A && git commit -a -m "Update for SUSFS"
-         cd ..
-
-      - name: Apply new hook and add configuration
+      - name: Package AnyKernel3 Zip
         run: |
-         cd kernel_workspace/kernel_platform
-         echo "CONFIG_KSU=y" >> ./common/arch/arm64/configs/gki_defconfig
-         echo "CONFIG_KSU_WITH_KPROBES=n" >> ./common/arch/arm64/configs/gki_defconfig
-         echo "CONFIG_KSU_SUSFS=y" >> ./common/arch/arm64/configs/gki_defconfig
-         echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-         echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> ./common/arch/arm64/configs/gki_defconfig
-         echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-         echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-         echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-         echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> ./common/arch/arm64/configs/gki_defconfig
-         echo "CONFIG_KSU_SUSFS_SUS_OVERLAYFS=n" >> ./common/arch/arm64/configs/gki_defconfig
-         echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-         echo "CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-         echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> ./common/arch/arm64/configs/gki_defconfig
-         echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> ./common/arch/arm64/configs/gki_defconfig
-         echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> ./common/arch/arm64/configs/gki_defconfig
-         echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> ./common/arch/arm64/configs/gki_defconfig
-         echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> ./common/arch/arm64/configs/gki_defconfig
-         echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./common/arch/arm64/configs/gki_defconfig
-         sed -i '2s/check_defconfig//' ./common/build.config.gki
+          git clone https://github.com/Kernel-SU/AnyKernel3 --depth=1 AnyKernel3
+          rm -rf AnyKernel3/.git
+          cp kernel_workspace/kernel_platform/out/msm-${{ github.event.inputs.CPUD }}-${{ github.event.inputs.CPUD }}-gki/dist/Image AnyKernel3/
+          if [ -f kernel_workspace/kernel_platform/out/msm-${{ github.event.inputs.CPUD }}-${{ github.event.inputs.CPUD }}-gki/dist/dtbo.img ]; then
+            cp kernel_workspace/kernel_platform/out/msm-${{ github.event.inputs.CPUD }}-${{ github.event.inputs.CPUD }}-gki/dist/dtbo.img AnyKernel3/
+          fi
+          if [ -f kernel_workspace/kernel_platform/out/msm-${{ github.event.inputs.CPUD }}-${{ github.event.inputs.CPUD }}-gki/dist/Image.gz-dtb ]; then
+            cp kernel_workspace/kernel_platform/out/msm-${{ github.event.inputs.CPUD }}-${{ github.event.inputs.CPUD }}-gki/dist/Image.gz-dtb AnyKernel3/
+          fi
+          cd AnyKernel3
+          zip -r ../OnePlusAce2_KernelSUNext_${{ github.event.inputs.FEIL }}.zip ./
 
-      - name: Build kernel
-        run: |
-         cd kernel_workspace
-         ./kernel_platform/oplus/build/oplus_build_kernel.sh ${{ github.event.inputs.CPUD }} ${{ github.event.inputs.BUILD_METHOD }}
-         
-      - name: Make AnyKernel3
-        run: |
-         git clone https://github.com/Kernel-SU/AnyKernel3 --depth=1
-         rm -rf ./AnyKernel3/.git
-         cp kernel_workspace/kernel_platform/out/msm-${{ github.event.inputs.CPUD }}-${{ github.event.inputs.CPUD }}-gki/dist/Image ./AnyKernel3/
-
-      - name: Upload AnyKernel3
+      - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-         name: AnyKernel3_KernelSU_Next_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}
-         path: ./AnyKernel3/*
-         
-      - name: Upload Image
-        uses: actions/upload-artifact@v4
-        with:
-         name: Image_KernelSU_Next_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}
-         path: kernel_workspace/kernel_platform/out/msm-kernel-${{ github.event.inputs.CPUD }}-gki/dist/Image
+          name: Ace2-KernelSUNext-${{ github.event.inputs.FEIL }}
+          path: |
+            OnePlusAce2_KernelSUNext_${{ github.event.inputs.FEIL }}.zip
+            kernel_workspace/kernel_platform/out/msm-${{ github.event.inputs.CPUD }}-${{ github.event.inputs.CPUD }}-gki/dist/Image
+            kernel_workspace/kernel_platform/out/msm-${{ github.event.inputs.CPUD }}-${{ github.event.inputs.CPUD }}-gki/dist/dtbo.img
+            kernel_workspace/kernel_platform/out/msm-${{ github.event.inputs.CPUD }}-${{ github.event.inputs.CPUD }}-gki/dist/Image.gz-dtb
