@@ -124,9 +124,10 @@ jobs:
          patch -p1 -F 3 < 69_hide_stuff.patch
          cp ../../kernel_patches/apk_sign.c_fix.patch ./
          patch -p1 -F 3 < apk_sign.c_fix.patch
-         cp ../../kernel_patches/next/manager.patch ./
-         patch -p1 --fuzz=3 < manager.patch
-        
+         cp ../../kernel_patches/next/fix.corehook.c.patch ./
+         patch -p1 --fuzz=3 < fix.corehook.c.patch
+         cp ../../kernel_patches/next/fix.ksud.c.patch ./
+         patch -p1 --fuzz=3 < fix.ksud.c.patch
          git add -A && git commit -a -m "BUILD Kernel with SUSFS v${{ github.event.inputs.SUSFS_VERSION }}"
          cd ../msm-kernel
          git add -A && git commit -a -m "Update for SUSFS"
