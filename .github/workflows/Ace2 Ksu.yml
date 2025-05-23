@@ -104,21 +104,7 @@ jobs:
           patch -p1 < 50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch || true
           cp ../../kernel_patches/next/syscall_hooks.patch ./
           patch -p1 -F 3 < syscall_hooks.patch
-          cp ../../susfs4ksu/kernel_patches/next/fix_core_hook.c.patch ./KernelSU-Next/
-          cp ../../susfs4ksu/kernel_patches/next/fix.ksud.c.patch ./KernelSU-Next/
-          cp ../../susfs4ksu/kernel_patches/next/fix_selinux.c.patch ./KernelSU-Next/
-          cp ../../susfs4ksu/kernel_patches/next/fix_sucompat.c.patch ./KernelSU-Next/
-          cp ../../susfs4ksu/kernel_patches/next/fix_apk_sign.c.patch ./KernelSU-Next/
-          cp ../../susfs4ksu/kernel_patches/next/manager.patch ./KernelSU-Next/
-          cd KernelSU-Next
-          patch -p1 -F 3 < fix_core_hook.c.patch || true
-          patch -p1 -F 3 < fix.ksud.c.patch || true
-          patch -p1 -F 3 < fix_selinux.c.patch || true
-          patch -p1 -F 3 < fix_sucompat.c.patch || true
-          patch -p1 -F 3 < fix_apk_sign.c.patch || true
-          patch -p1 -F 3 < manager.patch || true
           cd ../..
-          cd kernel_platform/common
           git add -A && git commit -m "Apply SUSFS and KSU patches" || true
           cd ../msm-kernel
           git add -A && git commit -m "Apply SUSFS and KSU patches" || true
