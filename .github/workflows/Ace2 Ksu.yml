@@ -59,12 +59,12 @@ jobs:
 
       - name: Initialize and Sync Kernel Repo
         run: |
-          mkdir kernel_workspace
-          cd kernel_workspace
+          mkdir kernel_workspace || exit 1
+          cd kernel_workspace || exit 1
           repo init -u https://github.com/OnePlusOSS/kernel_manifest.git \
                    -b "refs/heads/oneplus/${{ github.event.inputs.CPU }}" \
-                   -m "${{ github.event.inputs.FEIL }}.xml" --depth=1
-          repo sync --force-sync --no-tags --no-clone-bundle -j1
+                   -m "${{ github.event.inputs.FEIL }}.xml" --depth=1 || exit 1
+          repo sync --force-sync --no-tags --no-clone-bundle -j1 || exit 1
           rm -f kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports"
           rm -f kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports"
           sed -i 's/ -dirty//g' kernel_platform/common/scripts/setlocalversion
@@ -72,7 +72,7 @@ jobs:
 
       - name: Set LTO to ThinLTO
         run: |
-          cd kernel_workspace/kernel_platform
+          cd kernel_workspace/kernel_platform || exit 1
           sed -i 's/CONFIG_LTO=n/CONFIG_LTO=y/' ./common/arch/arm64/configs/gki_defconfig
           sed -i 's/CONFIG_LTO_CLANG_FULL=y/CONFIG_LTO_CLANG_THIN=y/' ./common/arch/arm64/configs/gki_defconfig
           sed -i 's/CONFIG_LTO_CLANG_NONE=y/CONFIG_LTO_CLANG_THIN=y/' ./common/arch/arm64/configs/gki_defconfig
@@ -80,9 +80,9 @@ jobs:
       - name: Set up KernelSU-Next
         if: ${{ github.event.inputs.KSUNEXT_ENABLED == 'true' }}
         run: |
-          cd kernel_workspace/kernel_platform
-          curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
-          cd KernelSU-Next
+          cd kernel_workspace/kernel_platform || exit 1
+          curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next || exit 1
+          cd KernelSU-Next || exit 1
           KSU_VERSION=$(( $(git rev-list --count HEAD) + 10200 ))
           echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
           sed -i "s/DKSU_VERSION=[0-9]*/DKSU_VERSION=${KSU_VERSION}/" kernel/Makefile
@@ -90,10 +90,10 @@ jobs:
       - name: Clone and Apply SUSFS & Other Patches
         if: ${{ github.event.inputs.SUSFS_ENABLED == 'true' }}
         run: |
-          cd kernel_workspace
-          git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}
-          git clone https://github.com/WildPlusKernel/kernel_patches.git
-          cd kernel_platform
+          cd kernel_workspace || exit 1
+          git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }} || exit 1
+          git clone https://github.com/WildPlusKernel/kernel_patches.git || exit 1
+          cd kernel_platform || exit 1
           cp ../kernel_patches/next/0001_susfs_157_for_ksunext.patch ./KernelSU-Next/
           cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch ./common/
           cp -r ../susfs4ksu/kernel_patches/fs/* ./common/fs/
@@ -117,7 +117,7 @@ jobs:
           patch -p1 -F 3 < fix_sucompat.c.patch || true
           patch -p1 -F 3 < fix_apk_sign.c.patch || true
           patch -p1 -F 3 < manager.patch || true
-          cd ../.. 
+          cd ../..
           cd kernel_platform/common
           git add -A && git commit -m "Apply SUSFS and KSU patches" || true
           cd ../msm-kernel
@@ -125,7 +125,7 @@ jobs:
 
       - name: Add KernelSU Configuration Flags
         run: |
-          cd kernel_workspace/kernel_platform/common/arch/arm64/configs
+          cd kernel_workspace/kernel_platform/common/arch/arm64/configs || exit 1
           echo "CONFIG_KSU=y" >> gki_defconfig
           echo "CONFIG_KSU_WITH_KPROBES=n" >> gki_defconfig
           echo "CONFIG_KSU_SUSFS=y" >> gki_defconfig
@@ -148,22 +148,35 @@ jobs:
 
       - name: Build Kernel (single-core)
         run: |
-          cd kernel_workspace
-          MAKEFLAGS="-j1" ./kernel_platform/oplus/build/oplus_build_kernel.sh ${{ github.event.inputs.CPUD }} ${{ github.event.inputs.BUILD_METHOD }}
+          cd kernel_workspace || exit 1
+          MAKEFLAGS="-j1" ./kernel_platform/oplus/build/oplus_build_kernel.sh ${{ github.event.inputs.CPUD }} ${{ github.event.inputs.BUILD_METHOD }} || exit 1
 
       - name: Package AnyKernel3 Zip
         run: |
-          git clone https://github.com/Kernel-SU/AnyKernel3 --depth=1 AnyKernel3
+          git clone https://github.com/Kernel-SU/AnyKernel3 --depth=1 AnyKernel3 || exit 1
           rm -rf AnyKernel3/.git
-          cp kernel_workspace/kernel_platform/out/msm-${{ github.event.inputs.CPUD }}-${{ github.event.inputs.CPUD }}-gki/dist/Image AnyKernel3/
-          if [ -f kernel_workspace/kernel_platform/out/msm-${{ github.event.inputs.CPUD }}-${{ github.event.inputs.CPUD }}-gki/dist/dtbo.img ]; then
-            cp kernel_workspace/kernel_platform/out/msm-${{ github.event.inputs.CPUD }}-${{ github.event.inputs.CPUD }}-gki/dist/dtbo.img AnyKernel3/
+          
+          # 检查并复制内核镜像文件
+          IMAGE_PATH="kernel_workspace/kernel_platform/out/msm-${{ github.event.inputs.CPUD }}-${{ github.event.inputs.CPUD }}-gki/dist"
+          
+          if [ ! -f "$IMAGE_PATH/Image" ]; then
+            echo "Error: Kernel image not found at $IMAGE_PATH/Image"
+            exit 1
           fi
-          if [ -f kernel_workspace/kernel_platform/out/msm-${{ github.event.inputs.CPUD }}-${{ github.event.inputs.CPUD }}-gki/dist/Image.gz-dtb ]; then
-            cp kernel_workspace/kernel_platform/out/msm-${{ github.event.inputs.CPUD }}-${{ github.event.inputs.CPUD }}-gki/dist/Image.gz-dtb AnyKernel3/
+          cp "$IMAGE_PATH/Image" AnyKernel3/
+          
+          # 复制 dtbo.img（如果存在）
+          if [ -f "$IMAGE_PATH/dtbo.img" ]; then
+            cp "$IMAGE_PATH/dtbo.img" AnyKernel3/
           fi
-          cd AnyKernel3
-          zip -r ../OnePlusAce2_KernelSUNext_${{ github.event.inputs.FEIL }}.zip ./
+          
+          # 复制 Image.gz-dtb（如果存在）
+          if [ -f "$IMAGE_PATH/Image.gz-dtb" ]; then
+            cp "$IMAGE_PATH/Image.gz-dtb" AnyKernel3/
+          fi
+          
+          cd AnyKernel3 || exit 1
+          zip -r ../OnePlusAce2_KernelSUNext_${{ github.event.inputs.FEIL }}.zip ./ || exit 1
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
